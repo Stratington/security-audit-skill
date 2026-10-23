@@ -13,7 +13,7 @@ Use `MEMORY-SAFETY-AND-BINARY.md` for memory-integrity defects and `PROTOCOLS-RP
 - A missing rate limit is not enough. Check body/message/file caps, concurrency, queues, deadlines, database constraints, upstream gateways, and per-tenant quotas before calling a path unbounded.
 - Do not run stress, saturation, or production tests. Use asymptotic analysis, small boundary fixtures, mocked paid calls, strict local resource limits, and deterministic cancellation tests.
 - State attacker cost, service work, persistence, scope, and recovery. One bounded input with superlinear or persistent shared effect is materially different from sustained volume.
-- Use `confirmed` for source-visible bounds failures demonstrated safely. Use `needs_validation` when upstream caps, deployed topology, autoscaling, paid quota, or recovery behavior is outside the repository.
+- Use `confirmed` for source-visible bounds failures demonstrated safely. Resource thresholds and timing are runtime-only under `SKILL.md`, so a source trace cannot confirm them; without a verified sandbox these candidates stay `needs_validation` with the missing bound and the safe local check that would demonstrate it. Use `needs_validation` when upstream caps, deployed topology, autoscaling, paid quota, or recovery behavior is outside the repository.
 ```
 
 ## Computational amplification attack classes (subagent_type: `general`)

@@ -13,7 +13,7 @@ Split large targets by primary storage, cache/search, object/blob storage, analy
 - Trace derived copies. Sanitized primary data can become unsafe in search, cache, analytics, export, previews, logs, replicas, and backups with different ACL and retention rules.
 - Deletion and revocation are lifecycle contracts. Check current, historical, cached, indexed, exported, restored, and queued copies within the product's stated boundary.
 - Privacy or retention preference is not automatically a security vulnerability. Require an explicit data-access boundary or deletion/revocation guarantee and an unauthorized reader or later operation.
-- Use `confirmed` for complete source-visible lineage and bounded dummy-tenant tests. Use `needs_validation` when external storage policy, retention, CDN behavior, replica lag, or backup access is unavailable.
+- Use `confirmed` for complete source-visible lineage and bounded dummy-tenant tests, or for a source trace that meets every condition in `SKILL.md` when those tests cannot run. Use `needs_validation` when external storage policy, retention, CDN behavior, replica lag, or backup access is unavailable.
 ```
 
 ## Tenant and object-isolation attack classes (subagent_type: `general`)

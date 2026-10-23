@@ -1,0 +1,49 @@
+# Local operating-system and editor files.
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment values; keep intentional example templates available.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+/.claude/settings.local.json
+/.gemini/settings.local.json
+
+# Dependencies, test output, and interpreter caches.
+node_modules/
+coverage/
+.nyc_output/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Private working directories belong outside the public source tree.
+/outputs/
+/reports/
+/audits/
+/work/
+/scratch/
+/tmp/
+/temp/
+
+# Ad-hoc root-level logs, patches, and generated audit artifacts.
+/*.log
+/*.patch
+/*.diff
+/REPORT.md
+/FINDINGS-DETAIL.md
+/NEEDS-VALIDATION.md
+/findings.json
+/coverage-ledger.json
+/run-metadata.json
+/architecture.md

@@ -13,7 +13,7 @@ Use alongside `ATTACK-CLASSES.md`. This file covers browser sources and sinks, o
 - The impact must reach a victim's session, another origin, or shared persistence. Self-injection and disclosure of the attacker's own data are not findings.
 - Framework escaping, browser same-origin policy, CSP, COOP/CORP, service-worker scope, and modern noopener defaults are real controls. Verify them before assigning impact.
 - Browser storage and caches are shared by origin and may outlive login state. Identify who writes, who reads, and which account, tenant, or worker lifecycle clears each record.
-- Use `confirmed` only for complete source evidence plus bounded local browser tests. Use `needs_validation` when renderer, extension permission, deployed header, or browser-policy behavior is required but unavailable.
+- Use `confirmed` only for complete source evidence plus bounded local browser tests, or for a source trace that meets every condition in `SKILL.md` when those tests cannot run. Mutation XSS, renderer quirks, and other parser differentials always need the browser test. Use `needs_validation` when renderer, extension permission, deployed header, or browser-policy behavior is required but unavailable.
 ```
 
 ## DOM and object-state attack classes (subagent_type: `general`)
@@ -80,4 +80,4 @@ A client source controls redirect or navigation without scheme and destination p
 2. For prototype pollution, prove the recursive write and a security-relevant gadget. For DOM clobbering, prove the markup survives and the shadowed value is used.
 3. For service workers and storage, prove lifecycle reachability: an attacker-controlled write or cache entry must reach a different account, tenant, or later authorization state.
 4. For messaging, CORS, WebSocket, and XS-Leaks, show exact origin/source validation and the protected state or action exposed. Confirm that CSP, COOP/CORP, cookies, and SameSite policy do not already block it.
-5. Return `confirmed` findings only with a complete client path and bounded local evidence. Return `needs_validation` with the precise deployed header, extension permission, browser version, or renderer behavior an owner must verify.
+5. Return `confirmed` findings only with a complete client path and bounded local evidence or a qualifying source trace. Return `needs_validation` with the precise deployed header, extension permission, browser version, or renderer behavior an owner must verify.

@@ -43,6 +43,7 @@ const LIMITS = Object.freeze({
   inputBytes: 5 * 1024 * 1024,
   nestingDepth: 64,
   arrayItems: 1000,
+  objectFields: 1000,
   canonicalKeyBytes: 1024 * 1024,
   uniqueSetBytes: 5 * 1024 * 1024,
   validationErrors: 100,
@@ -54,8 +55,79 @@ const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const UNSAFE_DIAGNOSTIC_CHARACTER = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 const MAX_DIAGNOSTIC_STRING_LENGTH = 256;
 
+// High-precision credential formats. Outputs describe secrets by kind, location, and
+// length; they never carry a usable value. Placeholders (documented EXAMPLE values or
+// low-variety filler such as AKIAXXXXXXXXXXXXXXXX) are not reported.
+// In raw JSON text a token that starts a line follows an escaped "\n", whose "n" \b reads as
+// part of the token. A token therefore starts after no word character, or after the n, r, or t
+// of an escaped \n, \r, or \t. (This nested form is as fast as \b; an alternation is ~25x slower.)
+const TOKEN_START = String.raw`(?<![A-Za-z0-9_](?<!\\[nrt]))`;
+const token = (pattern) => new RegExp(TOKEN_START + pattern.source, `g${pattern.flags}`);
+const SECRET_PATTERNS = Object.freeze([
+  ["AWS access key ID", token(/(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}(?![A-Za-z0-9])/)],
+  // The secret has no prefix of its own, so only a named assignment such as AWS_SECRET_ACCESS_KEY=... or
+  // "SecretAccessKey": "..." identifies it; quotes may be JSON-escaped.
+  ["AWS secret access key", /secret_?access_?key(?:\\*["'])?\s*[:=]\s*(?:\\*["'])?[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])/gi],
+  // A key copied into a JSON string has escaped line breaks ("\n", or "\\n" when escaped twice) instead of whitespace,
+  // and an encrypted PEM key has "Name: value" header lines (Proc-Type, DEK-Info) before its base64 body.
+  // Each header line ends at its line break, so no two whitespace runs are adjacent and matching stays linear.
+  ["private key block", /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----(?:\s|\\+[nr])*(?:[A-Za-z-]+:[^\r\n\\]*(?:\r?\n|\\+[nr])(?:\s|\\+[nr])*)*([A-Za-z0-9+/=]{40,})/g],
+  ["GitHub token", token(/(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})(?![A-Za-z0-9])/)],
+  ["GitLab token", token(/glpat-[A-Za-z0-9_-]{20,}/)],
+  ["Slack token", token(/xox[abposr]-[A-Za-z0-9-]{10,}/)],
+  ["Slack webhook URL", /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]{20,}/g],
+  ["Stripe live key", token(/(?:sk|rk)_live_[A-Za-z0-9]{20,}/)],
+  ["Google API key", token(/AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/)],
+  ["Anthropic API key", token(/sk-ant-[A-Za-z0-9_-]{20,}/)],
+  ["OpenAI API key", token(/sk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{40,}/)],
+  ["npm token", token(/npm_[A-Za-z0-9]{36}(?![A-Za-z0-9])/)],
+  ["PyPI token", token(/pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}/)],
+  ["host user or temp path", /(?:(?<![A-Za-z0-9_/.:-])\/(?:Users|home)\/[A-Za-z0-9._-]+\/|\/private\/var\/folders\/[A-Za-z0-9._-]+\/|\b[A-Za-z]:(?:\\+|\/)Users(?:\\+|\/)[A-Za-z0-9._-]+(?:\\+|\/))/g],
+]);
+// A real credential's random tail has high character variety; "xxxx" or "0000" placeholders do not.
+const SECRET_PLACEHOLDER_TAIL_LENGTH = 16;
+const SECRET_PLACEHOLDER_MIN_DISTINCT = 8;
+
 class JsonStructureError extends Error {}
 class SafeInputError extends Error {}
+
+function isSecretPlaceholder(match, keyBody, kind) {
+  if (match.includes("EXAMPLE")) return true;
+  if (kind === "host user or temp path") return false;
+  if (typeof keyBody === "string") {
+    // Line 1 of a PEM or OpenSSH private key encodes deterministic header/ASN.1 fields that can end in
+    // a run of "A"s (zero bytes), so check character variety across the whole first base64 line.
+    return new Set(keyBody).size < SECRET_PLACEHOLDER_MIN_DISTINCT;
+  }
+  // Dashes or underscores that a pattern swallowed after the token ("sk-ant-...----") are not its random tail.
+  let end = match.length;
+  while (end > 0 && (match[end - 1] === "-" || match[end - 1] === "_")) end--;
+  return new Set(match.slice(0, end).slice(-SECRET_PLACEHOLDER_TAIL_LENGTH)).size < SECRET_PLACEHOLDER_MIN_DISTINCT;
+}
+
+// Returns [{ kind, index }] for each non-placeholder credential-format match in text.
+function findUnredactedSecrets(text) {
+  const matches = [];
+  if (typeof text !== "string") return matches;
+  for (const [kind, pattern] of SECRET_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      if (!isSecretPlaceholder(match[0], match[1], kind)) matches.push({ kind, index: match.index });
+    }
+  }
+  return matches.sort((left, right) => left.index - right.index);
+}
+
+function collectSecretErrors(value, location, errors) {
+  if (errors.length >= LIMITS.validationErrors) return;
+  if (typeof value === "string") {
+    const kinds = new Set(findUnredactedSecrets(value).map((match) => match.kind));
+    for (const kind of kinds) errors.push(`${location}: appears to contain an unredacted ${kind}; describe it by kind, location, and length instead`);
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => collectSecretErrors(item, `${location}[${index}]`, errors));
+  } else if (value && typeof value === "object") {
+    for (const key of Object.keys(value)) collectSecretErrors(value[key], propertyPath(location, key), errors);
+  }
+}
 
 function escapeUnsafeDiagnosticCharacters(value) {
   return String(value).replace(UNSAFE_DIAGNOSTIC_CHARACTER, (character) => {
@@ -231,6 +303,9 @@ function collectDataLimitErrors(value, location = "$data") {
       }
     } else {
       const keys = Object.keys(current.value);
+      if (keys.length > LIMITS.objectFields) {
+        return [escapeUnsafeDiagnosticCharacters(`${current.location}: exceeds ${LIMITS.objectFields} field object limit`)];
+      }
       for (let index = keys.length - 1; index >= 0; index--) {
         const key = keys[index];
         const child = current.value[key];
@@ -394,9 +469,11 @@ function validate(value, schema, p, errors) {
 
   if (typeOf(value) === "object") {
     for (const req of hasOwn(schema, "required") ? schema.required : []) {
+      if (errors.length >= LIMITS.validationErrors) return;
       if (!hasOwn(value, req)) errors.push(`${p}: missing required field ${safeQuote(req)}`);
     }
     for (const key of Object.keys(value)) {
+      if (errors.length >= LIMITS.validationErrors) return;
       if (hasOwn(schema, "properties") && hasOwn(schema.properties, key)) {
         validate(value[key], schema.properties[key], propertyPath(p, key), errors);
       } else if (hasOwn(schema, "additionalProperties") && schema.additionalProperties === false) {
@@ -433,7 +510,9 @@ function validate(value, schema, p, errors) {
       }
     }
     if (hasOwn(schema, "items")) {
-      value.forEach((item, index) => validate(item, schema.items, `${p}[${index}]`, errors));
+      for (let index = 0; index < value.length && errors.length < LIMITS.validationErrors; index++) {
+        validate(value[index], schema.items, `${p}[${index}]`, errors);
+      }
     }
   }
 
@@ -493,6 +572,8 @@ function collectFindingSemanticErrors(findings) {
     if (!finding || typeof finding !== "object" || Array.isArray(finding)) return;
     const base = `$[${index}]`;
 
+    collectSecretErrors(finding, base, errors);
+
     if (hasOwn(finding, "fingerprint") && typeof finding.fingerprint === "string") {
       if (fingerprints.has(finding.fingerprint)) {
         errors.push(`${base}.fingerprint: duplicate of $[${fingerprints.get(finding.fingerprint)}].fingerprint`);
@@ -550,8 +631,18 @@ function collectFindingSemanticErrors(findings) {
       for (const forbidden of ["claimed_root_cause", "blockers", "validation_plan", "reason"]) {
         if (hasOwn(finding, forbidden)) errors.push(`${base}: confirmed finding must not contain ${safeQuote(forbidden)}`);
       }
-      if (!finding.execution || typeof finding.execution !== "object" || typeof finding.execution.observed_result !== "string" || !hasVisibleProse(finding.execution.observed_result)) {
-        errors.push(`${base}: confirmed finding requires a visible execution observed_result`);
+      const execution = finding.execution && typeof finding.execution === "object" && !Array.isArray(finding.execution) ? finding.execution : null;
+      const sourceTrace = finding.evidence_basis === "source_trace";
+      const resultField = sourceTrace ? "expected_result" : "observed_result";
+      const otherField = sourceTrace ? "observed_result" : "expected_result";
+      if (!execution || typeof execution[resultField] !== "string" || !hasVisibleProse(execution[resultField])) {
+        errors.push(`${base}: confirmed finding with ${sourceTrace ? "source_trace" : "local_execution"} evidence requires a visible execution ${resultField}`);
+      }
+      if (execution && hasOwn(execution, otherField)) {
+        errors.push(`${base}.execution: confirmed finding with ${sourceTrace ? "source_trace" : "local_execution"} evidence must not contain ${safeQuote(otherField)}`);
+      }
+      if (sourceTrace && !(finding.confidence && finding.confidence.score === "high")) {
+        errors.push(`${base}.confidence.score: source_trace evidence requires "high" confidence`);
       }
       if (!finding.remediation || typeof finding.remediation !== "object" || typeof finding.remediation.strategy !== "string" || !hasVisibleProse(finding.remediation.strategy)) {
         errors.push(`${base}: confirmed finding requires visible remediation`);
@@ -677,23 +768,31 @@ function enforceJsonTextLimits(contents) {
     }
 
     if (character === "\"") {
-      markArrayItem();
+      const container = containers[containers.length - 1];
+      if (container && container.type === "object" && container.expectsKey) {
+        container.expectsKey = false;
+        container.fields++;
+        if (container.fields > LIMITS.objectFields) {
+          throw new JsonStructureError(`input exceeds ${LIMITS.objectFields} field object limit`);
+        }
+      } else {
+        markArrayItem();
+      }
       inString = true;
     } else if (character === "[" || character === "{") {
       markArrayItem();
       if (containers.length >= LIMITS.nestingDepth) {
         throw new JsonStructureError(`input exceeds ${LIMITS.nestingDepth} level nesting depth limit`);
       }
-      containers.push({
-        type: character === "[" ? "array" : "object",
-        expectsItem: character === "[",
-        items: 0,
-      });
+      containers.push(character === "["
+        ? { type: "array", expectsItem: true, items: 0 }
+        : { type: "object", expectsKey: true, fields: 0 });
     } else if (character === "]" || character === "}") {
       containers.pop();
     } else if (character === ",") {
       const container = containers[containers.length - 1];
       if (container && container.type === "array") container.expectsItem = true;
+      else if (container && container.type === "object") container.expectsKey = true;
     } else if (!/\s/.test(character)) {
       markArrayItem();
     }
@@ -746,7 +845,7 @@ function run(file) {
     console.error("Failed to validate findings JSON: unexpected validation error");
     return 1;
   }
-  for (const message of errors) console.error("ERROR:", escapeUnsafeDiagnosticCharacters(message));
+  for (const message of errors) console.error("ERROR:", message);
   if (errors.length > 0) {
     const cap = errors.length === LIMITS.validationErrors ? `; output capped at ${LIMITS.validationErrors}` : "";
     console.error(`FAIL: ${errors.length} validation error(s)${cap}`);
@@ -759,14 +858,19 @@ function run(file) {
 module.exports = {
   LIMITS,
   PATH_FORBIDDEN_CHARACTER,
+  SECRET_PATTERNS,
+  SafeInputError,
   UNSAFE_DIAGNOSTIC_CHARACTER,
   VISIBLE_CONTENT,
   WINDOWS_RESERVED_COMPONENT,
   collect,
   collectFindingSemanticErrors,
   collectSchemaErrors,
+  escapeUnsafeDiagnosticCharacters,
+  findUnredactedSecrets,
   hasVisibleProse,
   isSafeRelativeSourcePath,
+  readFileWithinLimit,
   validateDocument,
 };
 

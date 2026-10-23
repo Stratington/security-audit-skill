@@ -13,7 +13,7 @@ Split large targets into dependency resolution, CI isolation, artifact provenanc
 - Follow integrity across every handoff: source identity, resolved inputs, build worker, artifact identity, test result, signature/attestation, promotion, and update consumer.
 - CI configuration is authorization code. Establish which event triggered a workflow, whose code runs, which secrets and tokens exist, and what it may publish or mutate.
 - A checksum fetched from the same untrusted location as the artifact does not establish independent integrity. Identify the trusted root and failure behavior.
-- Use `confirmed` for in-repo control-flow failures with bounded local validation. Use `needs_validation` for branch protection, hosted-runner, registry, signing-service, or production promotion facts that are not observable.
+- Use `confirmed` for in-repo control-flow failures with bounded local validation, or with a source trace that meets every condition in `SKILL.md` when that validation cannot run. Use `needs_validation` for branch protection, hosted-runner, registry, signing-service, or production promotion facts that are not observable.
 ```
 
 ## Dependency and build-input attack classes (subagent_type: `general`)

@@ -2,7 +2,7 @@
 
 #### When to use this file
 
-Reach for this file when the repository defines cloud identity, infrastructure, containers, Kubernetes, service mesh, serverless functions, edge workers, ingress, object storage, managed services, or environment-specific configuration. This domain asks whether deployed components receive the intended identity, isolation, network reachability, secrets, and policy. Source often expresses intent rather than live fact, so separate source-confirmed defects from deployment validation needs.
+Reach for this file when the repository defines cloud identity, infrastructure, containers, Kubernetes, service mesh, serverless functions, edge workers, ingress, object storage, managed services, or environment-specific configuration. Select its `Self-hosted host exposure attack classes` section only when the repository also provisions or configures a server it runs itself: a VPS or bare-metal host, host firewall rules, SSH or remote-administration settings, Compose files or service units that publish ports, or reverse-proxy, tunnel, or private-network configuration. This domain asks whether deployed components receive the intended identity, isolation, network reachability, secrets, and policy. Source often expresses intent rather than live fact, so separate source-confirmed defects from deployment validation needs.
 
 Use `SUPPLY-CHAIN-AND-RELEASE.md` for build and promotion trust, `WEB-PROTOCOL-AND-AUTH.md` for HTTP proxy semantics, and `DATA-ISOLATION-AND-LIFECYCLE.md` for data-store tenant scope.
 
@@ -13,7 +13,7 @@ Use `SUPPLY-CHAIN-AND-RELEASE.md` for build and promotion trust, `WEB-PROTOCOL-A
 - Map each workload's identity to specific operations and resources. Broad policy is a finding only when lower-trust input can reach an unauthorized action.
 - Ingress, proxies, service mesh, metadata services, and admission policy are real boundaries, but only count a control when its configuration and attachment are visible.
 - Secret references are not secret disclosure. Require a lower-trust reader, output, artifact, log path, or unsafe fallback.
-- Use `confirmed` for active in-repo configurations and local rendering/policy validation. Use `needs_validation` for account policy, network attachment, runtime admission, hosted metadata, or drift that needs owner observation.
+- Use `confirmed` for active in-repo configurations shown by local rendering/policy validation or by a source trace that meets every condition in `SKILL.md`. Use `needs_validation` for account policy, network attachment, runtime admission, hosted metadata, or drift that needs owner observation.
 ```
 
 ## Workload identity and IAM attack classes (subagent_type: `general`)
@@ -59,6 +59,20 @@ Secrets enter logs, crash reports, process arguments, shared environment, broad 
 
 **Credential renewal and outage fallback**
 Failure to mount, refresh, rotate, or revoke a workload credential causes stale credentials to remain active or an app to accept a less trusted identity mode. Review startup, readiness, reconnect, and cached-client behavior.
+
+## Self-hosted host exposure attack classes (subagent_type: `general`)
+
+**Origin reachable around its front door**
+The deployment puts a CDN, web application firewall, tunnel, or authenticating proxy in front of the application, yet the origin also accepts direct connections: a listener on a public interface, a published container port, or a repository-managed firewall rule open to any source. It is a finding only when the application also trusts that front door, for example by reading the client address or identity from proxy headers, exempting proxied traffic from authentication or rate limits, or relying on the firewall to block an exploitable path. Confirm when repository configuration shows both the direct listener and the trust; the live firewall and provider state is `needs_validation`.
+
+For each self-hosted host whose repository configuration shows an internet-facing listener, published port, or open inbound rule, add one exposure-reduction hardening note. It supplements the source fix of any record on that host and never replaces it:
+
+- Serve public traffic only through an outbound-only tunnel to a CDN or reverse proxy with a web application firewall (for example Cloudflare Tunnel), so the host answers no inbound web port.
+- Reach SSH, dashboards, and databases only over a private overlay network limited to the owner's devices (for example Tailscale with access rules and Tailnet Lock, Headscale, or WireGuard).
+- Then deny all inbound traffic at the provider firewall, keep the provider's out-of-band console as a recovery path, and have the owner confirm from a network outside the overlay that no port answers.
+- State the limits. The tunnel still forwards any request the application mishandles, and web application firewall rules can lag a new exploit. The tunnel provider terminates TLS and sees the traffic, and the overlay's keys and access rules become the new perimeter.
+
+Exposure on its own is hardening, not a finding: SSH with key-only login open to the internet is a note, not a vulnerability. The audit never scans or connects to the deployed host to check any of this.
 
 ## Managed storage, events, and edge attack classes (subagent_type: `general`)
 

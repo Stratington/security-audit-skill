@@ -13,7 +13,7 @@ Use `CLIENT-SIDE.md` for browser-side webview behavior, `MEMORY-SAFETY-AND-BINAR
 - Paths, process names, bundle/package IDs, and claimed sender fields are not peer authentication. Use OS peer credentials, code identity, capability handles, or protected channel state.
 - The native bridge or helper must authorize each operation and final resource after parsing. A trusted UI or broker does not make attacker-influenceable arguments trusted.
 - OS sandbox, signing, entitlements, permissions, keychain ACLs, exported-component policy, and prompt behavior are real controls when pinned and visible.
-- Use `confirmed` for source evidence plus bounded local/emulator tests. Use `needs_validation` when signing, manifest merge, OS version, device policy, installer ACL, or packaging is required but not observable.
+- Use `confirmed` for source evidence plus bounded local/emulator tests, or for a source trace that meets every condition in `SKILL.md` when those tests cannot run. Use `needs_validation` when signing, manifest merge, OS version, device policy, installer ACL, or packaging is required but not observable.
 ```
 
 ## Deep-link, callback, and navigation attack classes (subagent_type: `general`)
@@ -86,4 +86,4 @@ Notification, widget, shortcut, share sheet, biometric prompt, or deferred opera
 2. Confirm OS sandbox, peer credential, signing, entitlement, permission, user-consent, and installer controls that apply. Unknown packaging/runtime facts require `needs_validation`.
 3. For webview bridges, cite both navigation/origin control and privileged native sink. For IPC, cite peer authentication and per-resource authorization. For helpers, verify final normalized destination.
 4. Keep local tests bounded and use dummy content/accounts. Stop after proving the boundary result; do not extend proof into persistence or broader system modification.
-5. Return `confirmed` only with a complete source and local evidence chain. Return `needs_validation` with the exact OS, manifest, signing, ACL, or device-lifecycle fact required.
+5. Return `confirmed` only with a complete source evidence chain plus local tests or a qualifying source trace. Return `needs_validation` with the exact OS, manifest, signing, ACL, or device-lifecycle fact required.

@@ -161,7 +161,7 @@ test("schema is an actual top-level array with exactly three branches", () => {
   assert.equal(confirmedSchema.remediation.properties.code_changes.items.properties.fixed_code.minLength, undefined);
 });
 
-test("accepts a producer-shaped findings document through the CLI", () => {
+test("accepts a producer-shaped findings document through the CLI", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const result = runCli(JSON.stringify(producerShapedFindings()));
   assert.equal(result.status, 0, cliOutput(result));
   assert.match(result.stdout, /PASS: 3 findings valid/);
@@ -372,7 +372,7 @@ test("accepts legitimate Unicode source paths and prose", () => {
   assert.deepEqual(errorsFor([finding]), []);
 });
 
-test("CLI rejects input above the byte limit without an exception trace", () => {
+test("CLI rejects input above the byte limit without an exception trace", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const result = runCli(Buffer.alloc(LIMITS.inputBytes + 1, 0x20));
   const output = cliOutput(result);
   assert.equal(result.status, 1, output);
@@ -380,7 +380,7 @@ test("CLI rejects input above the byte limit without an exception trace", () => 
   assert.doesNotMatch(output, /RangeError|Maximum call stack|heap out of memory/i);
 });
 
-test("CLI rejects invalid UTF-8 without replacement or an exception trace", () => {
+test("CLI rejects invalid UTF-8 without replacement or an exception trace", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const findings = producerShapedFindings();
   findings[0].execution.payloads = ["INVALID_UTF8"];
   const encoded = Buffer.from(JSON.stringify(findings));
@@ -442,7 +442,7 @@ test("does not reflect controls from a failed CLI input path", () => {
   }
 });
 
-test("CLI rejects lone-surrogate prose without changing payload semantics", () => {
+test("CLI rejects lone-surrogate prose without changing payload semantics", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const findings = producerShapedFindings();
   findings[0].title = "\ud800";
   const result = runCli(JSON.stringify(findings));
@@ -452,7 +452,7 @@ test("CLI rejects lone-surrogate prose without changing payload semantics", () =
   assert.doesNotMatch(output, /stack|at validate-findings/i);
 });
 
-test("CLI rejects Unicode format controls in source paths", () => {
+test("CLI rejects Unicode format controls in source paths", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const findings = producerShapedFindings();
   findings[0].trace[0].file = "src/file\u202ename.c";
   const result = runCli(JSON.stringify(findings));
@@ -504,7 +504,7 @@ test("CLI rejects a symlink without following it", { skip: process.platform === 
   }
 });
 
-test("CLI rejects input above the nesting-depth limit without an exception trace", () => {
+test("CLI rejects input above the nesting-depth limit without an exception trace", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const levels = LIMITS.nestingDepth + 1;
   const result = runCli(`${"[".repeat(levels)}0${"]".repeat(levels)}`);
   const output = cliOutput(result);
@@ -513,7 +513,7 @@ test("CLI rejects input above the nesting-depth limit without an exception trace
   assert.doesNotMatch(output, /RangeError|Maximum call stack|heap out of memory/i);
 });
 
-test("CLI rejects an oversized array without an exception trace", () => {
+test("CLI rejects an oversized array without an exception trace", { skip: !HAS_SAFE_INPUT_OPEN }, () => {
   const result = runCli(JSON.stringify(Array(LIMITS.arrayItems + 1).fill(null)));
   const output = cliOutput(result);
   assert.equal(result.status, 1, output);
@@ -521,11 +521,124 @@ test("CLI rejects an oversized array without an exception trace", () => {
   assert.doesNotMatch(output, /RangeError|Maximum call stack|heap out of memory/i);
 });
 
+test("rejects oversized objects and excessive total value counts", () => {
+  const oversizedObject = {};
+  for (let i = 0; i <= LIMITS.objectFields; i++) oversizedObject[`k${i}`] = 1;
+  assert(errorsFor([oversizedObject]).some((error) => error.includes(`${LIMITS.objectFields} field object limit`)));
+
+  if (!HAS_SAFE_INPUT_OPEN) return;
+  const result = runCli(JSON.stringify([oversizedObject]));
+  const output = cliOutput(result);
+  assert.equal(result.status, 1, output);
+  assert.match(output, new RegExp(`${LIMITS.objectFields} field object limit`));
+});
+
 test("checks pattern and branch invariants", () => {
   rejectMutation(rejected, (finding) => { finding.fingerprint = "not stable"; });
   rejectMutation(needsValidation, (finding) => {
     finding.severity = { impact: { score: "low" }, overall_severity: "low" };
   });
+});
+
+function sourceTraced() {
+  const finding = confirmed();
+  finding.evidence_basis = "source_trace";
+  delete finding.execution.observed_result;
+  finding.execution.expected_result = "The other user's object changes.";
+  return finding;
+}
+
+test("accepts source-trace confirmation with an expected result and high confidence", () => {
+  assert.deepEqual(errorsFor([sourceTraced()]), []);
+  const explicitLocal = confirmed();
+  explicitLocal.evidence_basis = "local_execution";
+  assert.deepEqual(errorsFor([explicitLocal]), []);
+});
+
+test("keeps observed and expected results on their own evidence basis", () => {
+  const observedOnSourceTrace = sourceTraced();
+  observedOnSourceTrace.execution.observed_result = "The other user's object changes.";
+  assert(errorsFor([observedOnSourceTrace]).some((error) => error.includes("must not contain \"observed_result\"")));
+
+  const missingExpected = sourceTraced();
+  delete missingExpected.execution.expected_result;
+  assert(errorsFor([missingExpected]).some((error) => error.includes("requires a visible execution expected_result")));
+
+  const expectedOnLocal = confirmed();
+  expectedOnLocal.execution.expected_result = "The other user's object changes.";
+  assert(errorsFor([expectedOnLocal]).some((error) => error.includes("must not contain \"expected_result\"")));
+
+  const missingObserved = confirmed();
+  delete missingObserved.execution.observed_result;
+  assert(errorsFor([missingObserved]).some((error) => error.includes("requires a visible execution observed_result")));
+
+  rejectMutation(sourceTraced, (finding) => { finding.execution.expected_result = " "; });
+  rejectMutation(confirmed, (finding) => { finding.evidence_basis = "sandbox"; });
+});
+
+test("requires high confidence for source-trace confirmation", () => {
+  for (const score of ["medium", "low"]) {
+    const finding = sourceTraced();
+    finding.confidence.score = score;
+    assert(errorsFor([finding]).some((error) => error.includes("source_trace evidence requires \"high\" confidence")));
+  }
+});
+
+test("checks optional category and CWE labels on every branch", () => {
+  for (const factory of [confirmed, needsValidation, rejected]) {
+    const labeled = factory();
+    labeled.category = "missing_authorization";
+    labeled.cwe = "CWE-862";
+    assert.deepEqual(errorsFor([labeled]), []);
+    for (const category of ["Missing Authorization", "missing-authorization", "1st_class", ""]) {
+      rejectMutation(factory, (finding) => { finding.category = category; });
+    }
+    for (const cwe of ["cwe-862", "CWE-0862", "CWE-", "862"]) {
+      rejectMutation(factory, (finding) => { finding.cwe = cwe; });
+    }
+  }
+});
+
+// Credential-shaped test values are assembled at runtime so repository secret scanners do not flag this file.
+const FAKE_CREDENTIALS = Object.freeze([
+  ["AWS access key ID", ["AKIA", "Z7QX4MRT", "2LWN8PVB"].join("")],
+  ["GitHub token", ["ghp", "_Zq8Xw2Lm4Nv6Bt1Rk3Ps5Hd7Jf9Gc0Ya2Ue4"].join("")],
+  ["private key block", ["-----BEGIN", " RSA PRIVATE KEY-----\n", "MIIEowIBAAKCAQEAx7Qz2Lm9Np4Rt6Vw8Yb1Cd3Ef5Gh7Ij9Kl0Mn2Op4Qr"].join("")],
+  ["Anthropic API key", ["sk", "-ant-api03-", "Zq8Xw2Lm4Nv6Bt1Rk3Ps5Hd7Jf9Gc0Ya2Ue4"].join("")],
+  ["Stripe live key", ["sk", "_live_", "Zq8Xw2Lm4Nv6Bt1Rk3Ps5Hd7"].join("")],
+  ["AWS secret access key", ["AWS_SECRET_ACCESS_KEY=", "Zq7Xk3Lm9Qp2", "/Rt7Vw4Yz8Bn1Cd6Fg5Hj0Ks3+Lm"].join("")],
+]);
+
+test("rejects unredacted credential values anywhere in a finding", () => {
+  for (const [kind, value] of FAKE_CREDENTIALS) {
+    const inProse = confirmed();
+    inProse.description = `The handler logs ${value} on every request.`;
+    assert(errorsFor([inProse]).some((error) => error.includes(`$[0].description: appears to contain an unredacted ${kind}`)), kind);
+
+    const inPayload = rejected();
+    inPayload.evidence[0].description = `Configuration contains ${value}.`;
+    assert(errorsFor([inPayload]).some((error) => error.includes(`$[0].evidence[0].description: appears to contain an unredacted ${kind}`)), kind);
+  }
+  const inCode = confirmed();
+  inCode.remediation.code_changes = [{ file_name: "src/config.js", fixed_code: `const key = "${FAKE_CREDENTIALS[0][1]}";` }];
+  assert(errorsFor([inCode]).some((error) => error.includes("code_changes[0].fixed_code: appears to contain an unredacted AWS access key ID")));
+});
+
+test("does not echo the credential value in validation errors", () => {
+  const finding = confirmed();
+  finding.description = `The handler logs ${FAKE_CREDENTIALS[1][1]}.`;
+  for (const error of errorsFor([finding])) assert(!error.includes(FAKE_CREDENTIALS[1][1]), error);
+});
+
+test("accepts redacted credential descriptions and documented placeholders", () => {
+  const finding = confirmed();
+  finding.description = "config/prod.env:3 contains an AWS access key ID beginning AKIA, 20 characters long.";
+  finding.execution.payloads = [
+    ["AKIA", "IOSFODNN7", "EXAMPLE"].join(""),
+    `ghp_${"x".repeat(36)}`,
+    `sk_live_${"0".repeat(24)}`,
+  ];
+  assert.deepEqual(errorsFor([finding]), []);
 });
 
 test("rejects unsupported and malformed schema keywords", () => {
@@ -588,7 +701,7 @@ test("keeps shared helpers aligned with the coverage-ledger validator", () => {
   const sharedLimitKeys = Object.keys(findingsModule.LIMITS)
     .filter((key) => Object.prototype.hasOwnProperty.call(ledgerModule.LIMITS, key))
     .sort();
-  assert.deepEqual(sharedLimitKeys, ["inputBytes", "nestingDepth", "validationErrors"]);
+  assert.deepEqual(sharedLimitKeys, ["inputBytes", "nestingDepth", "objectFields", "validationErrors"]);
   for (const key of sharedLimitKeys) {
     assert.equal(findingsModule.LIMITS[key], ledgerModule.LIMITS[key], `LIMITS.${key}`);
   }

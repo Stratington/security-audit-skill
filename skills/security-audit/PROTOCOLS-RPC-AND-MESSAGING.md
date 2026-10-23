@@ -13,7 +13,7 @@ Split large systems by producer/consumer pair, external/internal peer role, sync
 - Schema validation proves message shape, not provenance, resource authority, ordering, or safe values. Follow decoded fields to policy and side effects.
 - Broker guarantees and application guarantees differ. Write down retry, ordering, acknowledgement, deduplication, and transaction behavior before evaluating state changes.
 - Parser disagreement requires two concrete consumers, schema versions, or wire representations and one security-relevant divergent value.
-- Use `confirmed` for source-complete paths plus bounded local producer/consumer tests. Use `needs_validation` for broker ACL, service-mesh identity, topic attachment, or compatibility behavior outside the repository.
+- Use `confirmed` for source-complete paths plus bounded local producer/consumer tests, or for a source trace that meets every condition in `SKILL.md` when those tests cannot run. Use `needs_validation` for broker ACL, service-mesh identity, topic attachment, or compatibility behavior outside the repository.
 ```
 
 ## Framing, schema, and interpretation attack classes (subagent_type: `general`)
@@ -78,4 +78,4 @@ Several consumers jointly implement one authorization or business transition, bu
 2. For disagreement claims, cite both parsers/consumers and the divergent decoded value. Safe rejection by either side prevents confirmation.
 3. For replay/order claims, establish actual delivery guarantees and reproduce the invariant failure with a bounded local/in-memory transport.
 4. For authorization and isolation, verify all interceptor, broker ACL, gateway, and consumer layers visible in source. External attachments make the candidate `needs_validation`.
-5. Return `confirmed` only with the complete message lifecycle and observed meaningful result. Return `needs_validation` with the exact broker, service identity, route, or delivery fact required.
+5. Return `confirmed` only with the complete message lifecycle and a meaningful result, observed locally or stated as the expected result of a qualifying source trace. Return `needs_validation` with the exact broker, service identity, route, or delivery fact required.

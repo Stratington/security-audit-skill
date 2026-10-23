@@ -1,0 +1,3 @@
+#!/bin/sh
+# Rejects commit messages that do not follow the commit conventions in CONTRIBUTING.md.
+exec node "$(git rev-parse --show-toplevel)/scripts/check-commit-message.cjs" "$1"

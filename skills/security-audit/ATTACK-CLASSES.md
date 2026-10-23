@@ -4,7 +4,7 @@
 
 Select attack classes relevant to the application type. Not every class applies to every codebase. The list below is a starting point; add application-specific classes from Phase 1 and split large codebases per subsystem. Frame work as finding, validating, fixing, and prioritizing vulnerabilities. Keep validation to source review and bounded local fixtures; do not develop payload chains, test availability on live services, or take action in shared environments.
 
-Use `confirmed` only when source evidence and bounded validation establish the full boundary and meaningful result. Use `needs_validation` when a specific deployment, provider, platform, identity, or runtime fact is unavailable; state the missing fact and the safe owner-observed or local check that resolves it.
+Use `confirmed` only when source evidence and bounded validation, or a source trace that qualifies under `SKILL.md`, establish the full boundary and meaningful result. Apply [FALSE-POSITIVE-PRECEDENTS.md](FALSE-POSITIVE-PRECEDENTS.md) before proposing a candidate from any class. Use `needs_validation` when a specific deployment, provider, platform, identity, or runtime fact is unavailable; state the missing fact and the safe owner-observed or local check that resolves it.
 
 > **Native / binary / kernel targets** (C/C++/Rust-unsafe, kernel modules, parsers and decoders, FFI, concurrent runtimes, binary loaders, JITs, firmware): use the memory-safety, integer/ABI, concurrency, binary-loader, and privileged-interface classes in [MEMORY-SAFETY-AND-BINARY.md](MEMORY-SAFETY-AND-BINARY.md).
 >
@@ -16,7 +16,7 @@ Use `confirmed` only when source evidence and bounded validation establish the f
 >
 > **Supply-chain and release targets** (dependency resolution, generated inputs, CI, release/signing/promotion, updates, plugins, or extensions): use [SUPPLY-CHAIN-AND-RELEASE.md](SUPPLY-CHAIN-AND-RELEASE.md).
 >
-> **Cloud and deployment targets** (IAM, infrastructure as code, containers/Kubernetes, service mesh, serverless/edge, ingress, provider events, or runtime configuration): use [CLOUD-AND-DEPLOYMENT.md](CLOUD-AND-DEPLOYMENT.md).
+> **Cloud and deployment targets** (IAM, infrastructure as code, containers/Kubernetes, service mesh, serverless/edge, ingress, provider events, runtime configuration, or self-hosted servers): use [CLOUD-AND-DEPLOYMENT.md](CLOUD-AND-DEPLOYMENT.md).
 >
 > **Protocol, RPC, and messaging targets** (gRPC, GraphQL transports, Protobuf/Cap'n Proto/Thrift, custom protocols, queues, brokers, pub/sub, webhooks, or streaming RPC): use [PROTOCOLS-RPC-AND-MESSAGING.md](PROTOCOLS-RPC-AND-MESSAGING.md).
 >
@@ -110,14 +110,14 @@ Pursue anomalies inside your assigned scope until the invariant is settled. If s
 
 **Obvious things** (subagent_type: `general`)
 Other agents hunt subtle bugs. This agent checks the basic exposures that are easy to overlook because everyone assumes someone else already checked them:
-- Are there any hardcoded passwords, API keys, tokens, or secrets in the source? (grep for `password`, `secret`, `apikey`, `token`, `Bearer`, `-----BEGIN`, common default passwords)
+- Are there any hardcoded passwords, API keys, tokens, or secrets in the source? (search for `password`, `secret`, `apikey`, `token`, `Bearer`, `-----BEGIN`, common default passwords). List matching files and line numbers first (`rg -uu -l`, `rg -uu -c`, or `rg -uu -n -o` with a pattern that stops before the value, such as `password\s*[:=]`), because a plain search prints whole matching lines, values included. Without `-uu`, `rg` skips `.env` and other hidden or ignored files, where secrets most often sit. Report each by kind, location, and length; never copy the value.
 - Are there any TODO/FIXME/HACK/XXX comments that reference security? (`TODO: add auth`, `FIXME: validate input`, `HACK: skip permission check`)
 - Is debug mode / dev mode properly gated? Can it be enabled in production via environment variable, query parameter, or header?
 - Are there test/example/seed credentials that work in production?
 - Is there a `/debug`, `/admin`, `/test`, `/status`, `/health`, `/metrics`, `/env`, `/.env`, `/config` endpoint that is unprotected?
-- Are there any `.env`, `.env.local`, `credentials.json`, `*.pem`, `*.key` files checked into the repo?
+- Are there any `.env`, `.env.local`, `credentials.json`, `*.pem`, `*.key` files checked into the repo? (`ls-files` decides tracked versus local; report names only)
 - Does the `.gitignore` actually cover secrets, uploads, and local config?
-- Are dependencies pinned? Are there known CVEs in the dependency tree? (check lockfiles)
+- Are dependencies pinned, with integrity hashes in committed lockfiles? Do not query registries or advisory services. A known-vulnerable version is a finding only when the vulnerable code path is reachable from this target's lower-trust input; otherwise list it as an owner action to run their advisory tooling.
 - Are there any `eval()`, `exec()`, `child_process`, `Function()`, `vm.runInContext`, `import()` with dynamic input?
 - Are CORS headers set to `*` or overly permissive? Is `Access-Control-Allow-Credentials` combined with a wildcard origin?
 - Are cookies missing `HttpOnly`, `Secure`, or `SameSite` attributes?

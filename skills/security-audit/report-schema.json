@@ -5,7 +5,7 @@
     "oneOf": [
       {
         "type": "object",
-        "description": "A source-grounded vulnerability that was independently demonstrated.",
+        "description": "A source-grounded vulnerability that was independently demonstrated by bounded local execution or, when execution was unavailable, by a complete deterministic source trace.",
         "properties": {
           "verdict": {
             "type": "string",
@@ -26,6 +26,21 @@
             "type": "string",
             "minLength": 1,
             "visibleContent": true
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Optional short vulnerability class label, such as sql_injection or missing_authorization."
+          },
+          "cwe": {
+            "type": "string",
+            "pattern": "^CWE-[1-9][0-9]*$",
+            "description": "Optional most specific applicable CWE identifier."
+          },
+          "evidence_basis": {
+            "type": "string",
+            "enum": ["local_execution", "source_trace"],
+            "description": "How the result was established. Absent means local_execution. source_trace requires execution.expected_result and high confidence instead of execution.observed_result."
           },
           "root_cause": {
             "type": "string",
@@ -145,10 +160,17 @@
               "observed_result": {
                 "type": "string",
                 "minLength": 1,
-                "visibleContent": true
+                "visibleContent": true,
+                "description": "The actual bounded local result. Required for local_execution; forbidden for source_trace."
+              },
+              "expected_result": {
+                "type": "string",
+                "minLength": 1,
+                "visibleContent": true,
+                "description": "The result the source trace establishes the instructions would produce in a sandbox. Required for source_trace; forbidden for local_execution."
               }
             },
-            "required": ["attacker_perspective", "payloads", "instructions", "observed_result"],
+            "required": ["attacker_perspective", "payloads", "instructions"],
             "additionalProperties": false
           },
           "remediation": {
@@ -266,6 +288,16 @@
             "minLength": 1,
             "visibleContent": true
           },
+          "category": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Optional short vulnerability class label, such as sql_injection or missing_authorization."
+          },
+          "cwe": {
+            "type": "string",
+            "pattern": "^CWE-[1-9][0-9]*$",
+            "description": "Optional most specific applicable CWE identifier."
+          },
           "claimed_root_cause": {
             "type": "string",
             "minLength": 1,
@@ -382,6 +414,16 @@
             "type": "string",
             "minLength": 1,
             "visibleContent": true
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Optional short vulnerability class label, such as sql_injection or missing_authorization."
+          },
+          "cwe": {
+            "type": "string",
+            "pattern": "^CWE-[1-9][0-9]*$",
+            "description": "Optional most specific applicable CWE identifier."
           },
           "claimed_root_cause": {
             "type": "string",
