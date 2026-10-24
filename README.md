@@ -1,17 +1,28 @@
+https://github.com/user-attachments/assets/7a42a9ed-d2fe-4460-9f75-14ac9bf616a8
+
 # Structured security reviews with AI agents
 
 Give your coding agent a structured way to review source code for potential security issues. Ask a focused question, review a set of changes, or request a full audit with written reports. Your chosen agent and model perform the review; this repository supplies instructions and local validation utilities.
 
+```text
+Read and follow https://raw.githubusercontent.com/Stratington/security-audit-skill/main/START-PROMPT.md.
+Walk me through setup, install the skill if needed, and help me choose and run a review.
+Use the project target already clear from our conversation; otherwise ask me which project to review and its location.
+If you cannot read the instructions, stop and tell me.
+```
+
+**Guided setup:** Start in a trusted directory outside the target with permission prompts enabled, then paste the prompt. The agent will ask for missing details and guide installation, mode selection, and any required restart. The [Start Prompt](START-PROMPT.md) contains the full instructions; [operating precautions](#operating-precautions) explain the launch requirements. Setup may need network access or your approval.
+
 > [!IMPORTANT]
-> **No assurance of any kind is provided by Franz Bruckhoff (Stratington Systems), the authors, or contributors.** The skill, documentation, utilities, and outputs are supplied as is, with all faults, without any representation, warranty, guarantee, or promise of results, to the fullest extent permitted by law. Findings, scores, coverage claims, and recommendations may be wrong or incomplete; a clean report does not mean the code is secure. No assurance is given that use, sandboxing, or redaction will be safe or protect data. Independently check conclusions and proposed changes. Use only on code you may lawfully review, and read [Operating precautions](#operating-precautions). Mandatory legal rights and liabilities remain unaffected. See [DISCLAIMER.md](DISCLAIMER.md); it does not add conditions to the MIT License.
+> **No assurance of any kind is provided by Franz Bruckhoff, Stratington Systems, the authors, or contributors.** The skill, documentation, utilities, and outputs are supplied as is, with all faults, without any representation, warranty, guarantee, or promise of results, to the fullest extent permitted by law. Findings, scores, coverage claims, and recommendations may be wrong or incomplete; a clean report does not mean the code is secure. No assurance is given that use, sandboxing, or redaction will be safe or protect data. Independently check conclusions and proposed changes. Use only on code you may lawfully review, and read [Operating precautions](#operating-precautions). Mandatory legal rights and liabilities remain unaffected. See [DISCLAIMER.md](DISCLAIMER.md); it does not add conditions to the MIT License.
 
 **Get started:** [Choose a mode](#choose-a-review-mode) · [Requirements](#requirements) · [Install](#installation) · [Precautions](#operating-precautions) · [Example prompts](#usage) · [Read the results](#understand-the-results)
 
-**Reference:** [Workflow](#intended-workflow) · [Upstream comparison](#improvements-over-the-reviewed-upstream-versions) · [Files](#files) · [Contributing](#contributing) · [License](#license)
+**Reference:** [Workflow](#intended-workflow) · [Upstream comparison](#improvements-over-the-reviewed-upstream-versions) · [Files](#files) · [Contributing](#contributing) · [Credits](#credits) · [License](#license)
 
 ## Choose a review mode
 
-Choose the smallest scope that answers your question. All modes use the same source and execution precautions; a full audit adds the coverage and reporting workflow.
+The starter prompt helps you choose the smallest scope that answers your question. Use the table below if you prefer to choose directly. All modes use the same source and execution precautions; a full audit adds the coverage and reporting workflow.
 
 | What you want | Mode | Intended output |
 |---|---|---|
@@ -23,16 +34,18 @@ Requesting report artifacts selects the full workflow, which can be scoped to a 
 
 ## Requirements
 
-- A coding agent and model with file-reading and shell capabilities. Compatibility and performance depend on the chosen platform and configuration. Fresh-context sub-agents support the single-session workflow; without them the full workflow requires two sessions.
+- A coding agent and model with file-reading and shell capabilities; see [agent compatibility](#agent-compatibility) for delegation requirements.
 - Node.js on a POSIX platform (Linux, macOS, or WSL) for the zero-dependency validators and redaction check, which require OS `O_NOFOLLOW` and `O_NONBLOCK` support to avoid following symlinks and blocking on special files
 - For the documented `npx skills` installer: **Node.js 22.20 or later**, as specified by the [Skills CLI installation requirements](https://github.com/vercel-labs/skills#install-a-skill). This is the installer's requirement, separate from the local validators' POSIX requirements.
 - Optional: an OS-enforced sandbox for target-controlled builds, tests, processes, browsers, emulators, fuzzers, and fixtures. It must disable external networking, use an empty allowlisted environment, enforce resource limits, and allow writes only to assigned scratch paths. `SAFE-OPERATION.md` has Docker, Podman, and Bubblewrap recipes and the preflight used to check specified controls. A passing preflight does not assure containment; without a passing preflight, use [source-only operation](#without-a-sandbox).
 
+### Agent compatibility
+
+The skill uses platform-neutral roles. Compatibility and performance depend on the platform and configuration; not every agent, model, or configuration has been tested. It records which delegation the platform offers: parallel sub-agents, sub-agents one at a time, or none. On a platform without sub-agents, a full audit runs in two sessions, because the session that finds a candidate never confirms it: the first session maps and hunts, and a new session verifies and writes the report. [Operating precautions](#operating-precautions) describes the required precautions, with notes for Claude Code, Codex CLI, and Gemini CLI.
+
 ## Installation
 
-The [MIT License](LICENSE) permits use, modification, redistribution, and commercial use. Read the [scope and liability notice](DISCLAIMER.md) before running it. That notice does not add conditions to the MIT permissions. The installable skill directory includes both notices.
-
-Run installation commands from a directory you control outside the codebase to be reviewed. A user-level installation makes the skill available when you start the agent in a separate review directory. With the [Skills CLI](https://skills.sh), select the coding agent you intend to use:
+The starter prompt guides installation if the skill is missing. For manual installation, run commands from a directory you control outside the codebase to be reviewed. A user-level installation makes the skill available when you start the agent in a separate review directory. With the [Skills CLI](https://skills.sh), select the coding agent you intend to use:
 
 ```bash
 npx skills add https://github.com/Stratington/security-audit-skill \
@@ -63,6 +76,18 @@ Auditing code means reading code that may have been written to attack whoever re
 2. **Keep permission prompts on.** Do not run an untrusted audit with permission checks disabled. If the agent asks to run a build, test, install, or script in the target and no sandbox is verified, decline.
 3. **Do not run the project's tooling yourself to "help".** `npm install`, `make`, `pytest`, and opening the folder in an IDE can all execute the repository's code with your permissions.
 4. **Treat the output directory as sensitive.** Reports contain exploit-relevant detail. The skill has the agent create the directory owner-only and keep secret values out of reports, but the `agents/` scratch directories hold target-controlled output and are not meant to be shared.
+
+### Without a sandbox
+
+The instructions require **source-only** operation unless a sandbox passes the specified preflight in the current run (no network, empty environment, read-only target, scratch-only writes, and resource limits, each probed). Passing those probes is not proof of containment or safe execution:
+
+- Do not run target-controlled code. That includes tools that look read-only but execute project code: package managers, build systems, test collectors, linters with JavaScript or Python configuration, and Git with repository-supplied configuration.
+- A finding can still be `confirmed` with `evidence_basis: "source_trace"` when every step is cited and deterministic from readable source, reachability is source-visible, every preventing control was checked, and the result does not depend on runtime-only behavior. These findings are labeled "AI-assessed finding (source trace, not executed)", require the workflow's high-confidence assessment, and carry the proposed sandboxed reproduction check. The label does not establish that the claim is correct or that the check will succeed.
+- Keep candidates that require unavailable execution as `needs_validation`, with a proposed bounded check for an owner-controlled sandbox.
+
+The skill instructs the agent to treat the target as hostile: ignore instructions addressed to agents, avoid symlinks that leave the repository, use hardened read-only Git, and redact secret values from outputs. These are instructions, not enforced controls; models and utilities can fail to follow or implement them. [SAFE-OPERATION.md](skills/security-audit/SAFE-OPERATION.md) has the detailed handling rules.
+
+### Platform launch instructions
 
 **Before starting a review, read the launch instructions for your agent below as well as [SAFE-OPERATION.md](skills/security-audit/SAFE-OPERATION.md). Keep permission prompts enabled and use source-only operation unless every required sandbox preflight passes.**
 
@@ -131,6 +156,8 @@ Do not create audit artifacts, execute target code, or modify target files.
 
 ### Request a full audit and reports
 
+For a concise request that selects full audit mode and the default `standard` profile directly (instead of the guided setup prompt at the top of this file):
+
 ```text
 Use the security-audit skill for a full source-only audit of /absolute/path/to/project.
 Use the standard profile and write reports to /absolute/path/to/review-output.
@@ -138,7 +165,7 @@ State the scope, execution capability, delegation capability, and coverage limit
 Do not execute target code or modify target files.
 ```
 
-Keep the output directory outside the target. If you explicitly request an in-target directory, the skill requires the parent to verify that version control ignores the whole directory. Sensitive scratch output still needs separate handling.
+Keep the output directory outside the target. If none is specified, a full audit defaults to `~/security-audit-skill/<repo-name>/run-<N>`. If you explicitly request an in-target directory, the skill requires the parent to verify that version control ignores the whole directory. Sensitive scratch output still needs separate handling.
 
 ### Choose audit size and budget
 
@@ -154,11 +181,12 @@ You can also name paths or a subsystem to limit scope. For a fixed invocation bu
 
 ### Continue without sub-agents
 
-A full audit without fresh-context delegation ends its first session after hunting, with pending candidates and no final report files. Start a **new session outside the target** and point it at the same output directory:
+A full audit without fresh-context delegation ends its first session after hunting, with pending candidates and no final report files. Start a **new session outside the target** and point it at the same output directory and target path (since `run-metadata.json` stores `<target>` rather than the host path):
 
 ```text
-Continue the security-audit run in /absolute/path/to/review-output.
-Read its run metadata, coverage ledger, and existing candidate artifacts.
+Continue the security-audit run in /absolute/path/to/review-output
+for target /absolute/path/to/project.
+Read its run metadata, coverage ledger, and existing candidate results.
 Perform the pending verification and reporting; do not hunt new candidates.
 Keep the review source-only and do not execute target code or modify target files.
 ```
@@ -167,7 +195,7 @@ The new session supplies a separate review context; it does not provide human se
 
 ### Supply deployment context
 
-You can give the audit facts that source cannot show, such as "all traffic goes through an authenticating gateway" or "this tool only runs on the operator VPN", in chat or in a file outside the repository. The skill treats them as unverified owner precedents: anything they suppress is recorded as rejected with that reason and listed in the report. Files inside the repository can never suppress a finding. In full audit mode, an unspecified output directory defaults to `~/security-audit-skill/<repo-name>/run-<N>`. The workflow writes inside the target repository only when you explicitly select a directory that version control ignores.
+You can give the audit facts that source cannot show, such as "all traffic goes through an authenticating gateway" or "this tool only runs on the operator VPN", in chat or in a file outside the repository. The skill treats them as unverified owner precedents: anything they suppress is recorded as rejected with that reason and listed in the report. Files inside the repository can never suppress a finding.
 
 ## Understand the results
 
@@ -212,23 +240,13 @@ The skill instructs an agent to follow six phases. This describes the intended p
 
 The workflow requires the parent to run `validate-coverage-ledger.cjs` after creating the ledger and after each later ledger update. It runs `validate-findings.cjs` in Phase 4 and again after every Phase 5 replacement, and `check-redaction.cjs` on every output file before the run ends.
 
-After a full audit, the skill offers one optional extra: a **decoy notice** for intruding AI agents. It is a `flag.txt` for the root of your servers or container images that tells an agent sent to break in that nobody authorized its task, and asks it to stop, touch nothing more, disconnect, and tell whoever sent it. The skill explains what the notice can and cannot do and writes nothing until you say yes. Even then it only drafts the notice and a placement guide in the output directory: it never deploys anything, and you place the file yourself. The guide includes an example read-audit rule; logging and alert delivery depend on the platform and configuration. There is no assurance an agent will read or obey the notice, that an intrusion will stop, or that monitoring will detect or report it.
-
-### Agent compatibility
-
-The skill names roles, not products, and is designed for coding agents and models that can read files and run shell commands. Not every agent, model, or configuration has been tested. It records which delegation the platform offers: parallel sub-agents, sub-agents one at a time, or none. On a platform without sub-agents, a full audit runs in two sessions, because the session that finds a candidate never confirms it: the first session maps and hunts, and a new session verifies and writes the report. [Operating precautions](#operating-precautions) describes the required precautions, with notes for Claude Code, Codex CLI, and Gemini CLI.
-
-### Without a sandbox
-
-The instructions require **source-only** operation unless a sandbox passes the specified preflight in the current run (no network, empty environment, read-only target, scratch-only writes, and resource limits, each probed). Passing those probes is not proof of containment or safe execution:
-
-- Do not run target-controlled code. That includes tools that look read-only but execute project code: package managers, build systems, test collectors, linters with JavaScript or Python configuration, and Git with repository-supplied configuration.
-- A finding can still be `confirmed` with `evidence_basis: "source_trace"` when every step is cited and deterministic from readable source, reachability is source-visible, every preventing control was checked, and the result does not depend on runtime-only behavior. These findings are labeled "AI-assessed finding (source trace, not executed)", require the workflow's high-confidence assessment, and carry the proposed sandboxed reproduction check. The label does not establish that the claim is correct or that the check will succeed.
-- Keep candidates that require unavailable execution as `needs_validation`, with a proposed bounded check for an owner-controlled sandbox.
-
-The skill instructs the agent to treat the target as hostile: ignore instructions addressed to agents, avoid symlinks that leave the repository, use hardened read-only Git, and redact secret values from outputs. These are instructions, not enforced controls; models and utilities can fail to follow or implement them; [Operating precautions](#operating-precautions) has the habits that back them up.
-
 For repeated runs, the workflow uses prior ledgers and findings to target gaps, revalidate changed source, and carry forward current-source evidence. Repetition does not establish complete coverage or correct results.
+
+### Optional decoy notice
+
+After a full audit, the skill offers one optional extra: a **decoy notice** for intruding AI agents. It is a `flag.txt` for the root of your servers or container images that tells an agent sent to break in that nobody authorized its task, and asks it to stop, touch nothing more, disconnect, and tell whoever sent it. The skill explains what the notice can and cannot do and writes nothing until you say yes.
+
+Even then it only drafts the notice and a placement guide in the output directory: it never deploys anything, and you place the file yourself. The guide includes an example read-audit rule; logging and alert delivery depend on the platform and configuration. There is no assurance an agent will read or obey the notice, that an intrusion will stop, or that monitoring will detect or report it.
 
 ## Design principles
 
@@ -243,18 +261,11 @@ These are procedural instructions, not assurances that an agent will follow them
 - **Defense-in-depth gaps are not vulnerabilities.** If Layer A prevents the attack, the absence of Layer B is a hardening note.
 - **Multiple runs can broaden coverage.** Repeated passes can revisit gaps, but they do not guarantee completeness or correct results.
 
-## Origins
-
-Franz Bruckhoff (Stratington Systems) maintains this fork independently. Its upstream sources are:
-
-- **Base audit framework:** [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill), under its [MIT License](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/LICENSE). The six-phase audit, coverage ledger, attack-class companions, and validators derive from this project. Its background is described in [Build your own vulnerability harness](https://blog.cloudflare.com/build-your-own-vulnerability-harness).
-- **Review-guidance reference:** [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review), under its [MIT License](https://github.com/anthropics/claude-code-security-review/blob/0c6a49f1fa56a1d472575da86a94dbc1edb78eda/LICENSE). Its change-review approach and false-positive filtering rules were reworked into this fork's Markdown instructions. Its Python application and GitHub Action are not shipped here.
-
-Neither upstream organization maintains, sponsors, endorses, or is affiliated with this fork. The source credits and copyright notices identify separate sources; they do not imply collaboration or a joint product, or attribute this fork's independent additions to either organization. See [third-party notices](THIRD-PARTY-NOTICES.md) for scope and provenance, and [Credits](#credits) for other ideas.
-
 ## Improvements over the reviewed upstream versions
 
-This comparison covers the upstream snapshots inspected by this fork's maintainer:
+The tables compare this fork with the reviewed versions of Cloudflare's security-audit-skill and Anthropic's claude-code-security-review. See [Credits](#credits) for each project's role, licensing, and attribution.
+
+Reviewed snapshots:
 
 - **Cloudflare:** [c1c8a8c1471069fb0e188eeaff69b8e8db6564a8](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8), the last Cloudflare ancestor incorporated into this fork.
 - **Anthropic:** [0c6a49f1fa56a1d472575da86a94dbc1edb78eda](https://github.com/anthropics/claude-code-security-review/tree/0c6a49f1fa56a1d472575da86a94dbc1edb78eda), the inspected comparison reference. The original Anthropic import revision was not recorded.
@@ -290,10 +301,10 @@ The broader workflow can require more model calls and setup. Source-trace findin
 
 ## Files
 
-The installable skill and its companion files live in [`skills/security-audit/`](skills/security-audit). Expand the inventory for prompts, validators, and tests.
+The [Start Prompt](START-PROMPT.md) lives at the repository root and provides guided setup. The installable skill and its companion files live in [`skills/security-audit/`](skills/security-audit). Expand the inventory for skill instructions, validators, and tests.
 
 <details>
-<summary>Complete skill file inventory</summary>
+<summary>Installable skill file inventory</summary>
 
 | File | Purpose |
 |------|---------|
@@ -345,9 +356,22 @@ For suspected security problems in the skill itself, follow [SECURITY.md](SECURI
 
 ## Credits
 
+**Maintainer:** [Franz Bruckhoff](https://fbx.io), [Stratington Systems](https://stratington.com). This fork is maintained independently.
+
+### Upstream projects
+
+- **Base audit framework:** [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill), under its [MIT License](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/LICENSE). The six-phase audit, coverage ledger, attack-class companions, and validators derive from this project. Its background is described in [Build your own vulnerability harness](https://blog.cloudflare.com/build-your-own-vulnerability-harness).
+- **Review-guidance reference:** [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review), under its [MIT License](https://github.com/anthropics/claude-code-security-review/blob/0c6a49f1fa56a1d472575da86a94dbc1edb78eda/LICENSE). Its change-review approach and false-positive filtering rules were reworked into this fork's Markdown instructions. Its Python application and GitHub Action are not shipped here.
+
+Neither upstream organization maintains, sponsors, endorses, or is affiliated with this fork. The source credits and copyright notices identify separate sources; they do not imply collaboration or a joint product, or attribute this fork's independent additions to either organization. See [third-party notices](THIRD-PARTY-NOTICES.md) for scope and provenance.
+
+### Other inspirations
+
 - **Decoy notice:** andi ([@Nexuist](https://x.com/Nexuist/status/2113677652531761661)) proposed the `flag.txt` idea for intruding AI agents. Ekco ([@Ekco_The_Wizard](https://x.com/Ekco_The_Wizard/status/2113703470381294045)) shared a notice in reply, later published at [e14tech/flag.txt](https://github.com/e14tech/flag.txt). That text has no license, so this skill uses independently written wording and asks the agent to stop rather than repair anything. See [the decoy-notice guide](skills/security-audit/DECOY-NOTICE.md).
 - **Self-hosted origin exposure:** Pieter Levels ([@levelsio](https://x.com/levelsio/status/2113587042185576853)) described serving a site through an outbound tunnel behind a web application firewall, using a private network for administration, and blocking inbound connections at the provider firewall. This informed the [self-hosted exposure guidance](skills/security-audit/CLOUD-AND-DEPLOYMENT.md#self-hosted-host-exposure-attack-classes-subagent_type-general).
 
 ## License
 
-MIT -- see [LICENSE](LICENSE), [third-party notices](THIRD-PARTY-NOTICES.md), and [DISCLAIMER.md](DISCLAIMER.md) for the intended use, the warranty disclaimer, and the limits of liability.
+The [MIT License](LICENSE) permits use, modification, redistribution, and commercial use. Keep the required copyright and permission notices with copies or substantial portions of the software.
+
+Read the [scope and liability notice](DISCLAIMER.md) before use. It describes the intended use, warranty disclaimer, and limits imposed by applicable law; it does not add conditions to the MIT permissions. [Third-party notices](THIRD-PARTY-NOTICES.md) identify the upstream sources and their licenses. The installable skill directory includes all three notices.
