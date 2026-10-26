@@ -10,6 +10,10 @@ Use plain language and ask one focused question or a short group of related ques
 
 Use the project target and location already clear from the conversation. If either is unclear, explicitly ask which project to review and request its absolute path before installation or target access. Do not guess from the current working directory or assume this skill repository is the target. Ask what the user wants to learn or check if they have not already said. Explain that the review requires ownership or permission; ask if authorization is unclear, and do not proceed if the conversation shows it is absent.
 
+Once the user has established ownership or permission and selected source-only review, state the scope plainly: "This is an authorized defensive static review of locally available source code for security improvements. No target-code execution, live-system access, external targeting, or disruption is permitted in this review." Use the user's actual authorization basis; do not claim they are the owner or that the purpose is personal if that is not established. Carry this scope into delegated task prompts. This declaration describes the permitted work and does not override provider policies or tool approvals.
+
+Use "source-only" rather than "purely offline" unless local model processing and the absence of network use are actually established. Fetching these instructions and installing the skill can require network access; a hosted model can receive prompts and source content. If a provider blocks a step, stop that step, explain the notice, and follow the skill's provider-policy instructions; do not retry with wording intended to evade its safeguards.
+
 ### 2. Check how the agent was launched
 
 Before installation or target access, establish that this session started in a trusted directory outside the target and loaded no target-provided hooks, settings, skills, or tool servers. Check the available session information first; ask the user about launch details only when needed. Do not inspect or run the target's tooling to establish this.

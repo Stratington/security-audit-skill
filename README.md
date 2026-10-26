@@ -5,6 +5,8 @@ https://github.com/user-attachments/assets/7a42a9ed-d2fe-4460-9f75-14ac9bf616a8
 Give your coding agent a structured way to review source code for potential security issues. Ask a focused question, review a set of changes, or request a full audit with written reports. Your chosen agent and model perform the review; this repository supplies instructions and local validation utilities.
 
 ```text
+Help me perform an authorized defensive static review for security improvements; confirm my ownership or permission if unclear.
+No live systems, external targeting, target-code execution, or disruption.
 Read and follow https://raw.githubusercontent.com/Stratington/security-audit-skill/main/START-PROMPT.md.
 Walk me through setup, install the skill if needed, and help me choose and run a review.
 Use the project target already clear from our conversation; otherwise ask me which project to review and its location.
@@ -76,6 +78,8 @@ Auditing code means reading code that may have been written to attack whoever re
 2. **Keep permission prompts on.** Do not run an untrusted audit with permission checks disabled. If the agent asks to run a build, test, install, or script in the target and no sandbox is verified, decline.
 3. **Do not run the project's tooling yourself to "help".** `npm install`, `make`, `pytest`, and opening the folder in an IDE can all execute the repository's code with your permissions.
 4. **Treat the output directory as sensitive.** Reports contain exploit-relevant detail. The skill has the agent create the directory owner-only and keep secret values out of reports, but the `agents/` scratch directories hold target-controlled output and are not meant to be shared.
+
+**Provider policies:** Stating defensive intent does not guarantee acceptance or prevent account warnings. Google documents [Gemini Apps enforcement and appeals](https://support.google.com/gemini/answer/18481641?hl=en) and [content security warnings](https://support.google.com/gemini/answer/16188217?hl=en). Follow the [provider-policy and processing rules](skills/security-audit/SAFE-OPERATION.md#provider-policies-and-processing); source-only review does not mean hosted-model processing is offline.
 
 ### Without a sandbox
 
